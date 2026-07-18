@@ -20,9 +20,9 @@ Prebuilt binaries are generated automatically for every release tag via GitHub A
    - `desktop-windows-latest` → contains the `.exe`
 
 ### Installing on Linux
+* Extract the file and inside the extracted folder you will see a file called calculator.deb open the folder with terminal by right click inside the folder and run this command inside the terminal
 ```bash
-sudo dpkg -i calculator.deb
-calculator
+sudo apt install ./caculator.deb
 ```
 
 ### Running on Windows
