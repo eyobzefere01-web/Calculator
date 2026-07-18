@@ -10,6 +10,7 @@ jobs:
   # Compile it using Nuitka
   build-desktop:
     name: Build Desktop (${{ matrix.os }})
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -19,6 +20,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Frees ~20-30GB on GitHub-hosted Ubuntu runners; onefile Nuitka builds
+      # can otherwise run out of disk mid-compile and get silently canceled
+      - name: Free up disk space (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          df -h
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,12 +67,12 @@ jobs:
       # Compiles Windows .exe (Explicitly listing the target packages in a single line to ensure PowerShell works)
       - name: Compile with Nuitka (Windows)
         if: matrix.os == 'windows-latest'
-        run: python -m nuitka --standalone --onefile --assume-yes-for-download --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static --windows-icon-from-ico=icon.ico GUI.py
+        run: python -m nuitka --standalone --onefile --assume-yes-for-download --show-progress --show-memory --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static --windows-icon-from-ico=icon.ico GUI.py
 
       # Compiles Linux Standalone Binary (Explicitly listing target packages without the windows icon flag)
       - name: Compile with Nuitka (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: python -m nuitka --standalone --onefile --assume-yes-for-download --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static -o GUI.bin GUI.py
+        run: python -m nuitka --standalone --onefile --assume-yes-for-download --show-progress --show-memory --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static -o GUI.bin GUI.py
 
       # Packaging the Linux binary as a standalone Debian .deb package with system application icon configurations
       - name: Create Debian Package (Linux)
