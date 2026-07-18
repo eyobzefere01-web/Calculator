@@ -18,7 +18,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        shell: bash   # forces Git Bash on windows-latest too, so steps fail fast like Linux instead of silently continuing under pwsh
+        shell: bash   # Git Bash ships on windows-latest too; makes both OSes fail fast on error instead of pwsh silently continuing
 
     steps:
       - name: Checkout repository
@@ -29,6 +29,7 @@ jobs:
       - name: Free up disk space (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
+          set -euo pipefail
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -46,4 +47,113 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           set -euo pipefail
-          sudo
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            gobject-introspection \
+            libgirepository-2.0-dev
+
+      # Using 'python -m pip' explicitly everywhere ensures packages land in the active runner environment
+      # set -euo pipefail makes this step actually fail (and stop the job) if anything fails to install
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install nuitka pywebview imageio pillow
+
+      # Fails fast with a clear message if a package silently failed to install,
+      # instead of finding out deep inside a 10+ minute Nuitka compile
+      - name: Verify required packages are importable
+        run: |
+          set -euo pipefail
+          python -c "import flask, werkzeug, jinja2, click, itsdangerous, blinker, webview; print('All required packages import OK')"
+
+      # Nuitka's --windows-icon-from-ico needs a real .ico, not a .png
+      - name: Convert icon to .ico (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          set -euo pipefail
+          python -c "from PIL import Image; Image.open('static/ico/icons8-calculator-100.png').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+
+      # Compiles Windows .exe
+      - name: Compile with Nuitka (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          set -euo pipefail
+          python -m nuitka --standalone --onefile --assume-yes-for-download --show-progress --show-memory \
+            --include-package=flask --include-package=werkzeug --include-package=jinja2 \
+            --include-package=click --include-package=itsdangerous --include-package=blinker \
+            --include-data-dir=templates=templates --include-data-dir=static=static \
+            --windows-icon-from-ico=icon.ico GUI.py
+
+      # Compiles Linux standalone binary
+      - name: Compile with Nuitka (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          python -m nuitka --standalone --onefile --assume-yes-for-download --show-progress --show-memory \
+            --include-package=flask --include-package=werkzeug --include-package=jinja2 \
+            --include-package=click --include-package=itsdangerous --include-package=blinker \
+            --include-data-dir=templates=templates --include-data-dir=static=static \
+            -o GUI.bin GUI.py
+
+      # Packaging the Linux binary as a standalone Debian .deb package
+      - name: Create Debian Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          mkdir -p package/usr/local/bin
+          mkdir -p package/usr/share/pixmaps
+          mkdir -p package/usr/share/applications
+          mkdir -p package/DEBIAN
+
+          cp GUI.bin package/usr/local/bin/calculator
+          cp static/ico/icons8-calculator-100.png package/usr/share/pixmaps/calculator-icon.png
+
+          cat <<EOF > package/usr/share/applications/calculator.desktop
+          [Desktop Entry]
+          Type=Application
+          Version=1.0.0
+          Name=Calculator
+          Comment=Calculator local web application desktop interface
+          Exec=/usr/local/bin/calculator
+          Icon=calculator-icon
+          Terminal=false
+          Categories=Utility;Calculator;
+          EOF
+
+          cat <<EOF > package/DEBIAN/control
+          Package: calculator
+          Version: 1.0.0
+          Section: custom
+          Priority: optional
+          Architecture: amd64
+          Essential: no
+          Maintainer: Eyob <eyobzefere01@gmail.com>
+          Description: Calculator local web application desktop interface.
+          EOF
+
+          # Strip leading whitespace introduced by YAML block indentation of the heredocs above,
+          # since leading whitespace in a Debian control file is meaningful (field continuation)
+          sed -i 's/^[ \t]*//' package/usr/share/applications/calculator.desktop
+          sed -i 's/^[ \t]*//' package/DEBIAN/control
+
+          dpkg-deb --build package calculator.deb
+
+      - name: Upload Desktop Artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: '*.exe'
+
+      - name: Upload Desktop Artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: '*.deb'
