@@ -40,8 +40,8 @@ Just double-click the `.exe` — no installation required.
 ## Building from source
 
 ```bash
-git clone https://github.com/eyobzefere01-web/Calculator-v2.git
-cd Calculator-v2
+git clone https://github.com/eyobzefere01-web/Calculator.git
+cd Calculator
 python -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
