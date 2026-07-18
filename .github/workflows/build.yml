@@ -43,12 +43,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-          python -m pip install nuitka pywebview imageio
+          python -m pip install nuitka pywebview imageio pillow
+
+      # Nuitka's --windows-icon-from-ico needs a real .ico, not a .png
+      - name: Convert icon to .ico (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -c "from PIL import Image; Image.open('static/ico/icons8-calculator-100.png').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
 
       # Compiles Windows .exe (Explicitly listing the target packages in a single line to ensure PowerShell works)
       - name: Compile with Nuitka (Windows)
         if: matrix.os == 'windows-latest'
-        run: python -m nuitka --standalone --onefile --assume-yes-for-download --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static --windows-icon-from-ico=static/ico/icons8-calculator-100.png GUI.py
+        run: python -m nuitka --standalone --onefile --assume-yes-for-download --include-package=flask --include-package=werkzeug --include-package=jinja2 --include-package=click --include-package=itsdangerous --include-package=blinker --include-data-dir=templates=templates --include-data-dir=static=static --windows-icon-from-ico=icon.ico GUI.py
 
       # Compiles Linux Standalone Binary (Explicitly listing target packages without the windows icon flag)
       - name: Compile with Nuitka (Linux)
@@ -63,7 +69,7 @@ jobs:
           mkdir -p package/usr/share/pixmaps
           mkdir -p package/usr/share/applications
           mkdir -p package/DEBIAN
-          
+
           cp GUI.bin package/usr/local/bin/calculator
           cp static/ico/icons8-calculator-100.png package/usr/share/pixmaps/calculator-icon.png
 
@@ -90,12 +96,21 @@ jobs:
           Description: Calculator local web application desktop interface.
           EOF
 
+          sed -i 's/^[ \t]*//' package/usr/share/applications/calculator.desktop
+          sed -i 's/^[ \t]*//' package/DEBIAN/control
+
           dpkg-deb --build package calculator.deb
 
-      - name: Upload Desktop Artifacts
+      - name: Upload Desktop Artifacts (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.os }}
-          path: |
-            *.exe
-            *.deb
+          path: '*.exe'
+
+      - name: Upload Desktop Artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: '*.deb'
