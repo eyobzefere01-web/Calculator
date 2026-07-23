@@ -3,3 +3,4 @@ pandas==3.0.3
 pywebview==6.2.1
 openpyxl==3.1.5
 PyGObject==3.56.3
+gunicorn==26.0.0
